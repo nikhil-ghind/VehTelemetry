@@ -1,0 +1,25 @@
+# CMake build artifacts
+build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+
+# Parquet output files
+*.parquet
+telemetry_output/
+
+# Compiled binary
+veh_telemetry
+
+# macOS
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+compile_commands.json

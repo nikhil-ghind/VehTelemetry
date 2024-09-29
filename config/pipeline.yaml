@@ -1,0 +1,49 @@
+# VehTelemetry pipeline configuration
+# ──────────────────────────────────────────────────────────────────────────
+# All values shown are defaults. Override by modifying this file or by
+# setting VEH_* environment variables (planned future feature).
+
+pipeline:
+
+  # ── Queue capacities (must be powers of two) ──────────────────────────
+  queues:
+    lidar_capacity:   65536    # LidarPoint slots   (~300K pts/s buffer ~0.2s)
+    imu_capacity:     8192     # ImuSample slots    (1kHz → ~8s buffer)
+    can_raw_capacity: 4096     # CanFrame slots
+    obd_capacity:     4096     # ObdData slots
+    fused_capacity:   4096     # FusedSample slots  (100Hz → ~40s buffer)
+
+  # ── LiDAR driver ──────────────────────────────────────────────────────
+  lidar:
+    simulate:         true     # Use simulator when true
+    target_hz:        10       # Spin rate (10 Hz = 1 revolution/100ms)
+    points_per_rev:   30000    # Points emitted per full rotation
+    sched_priority:   50       # SCHED_FIFO priority (0 = use default)
+
+  # ── IMU driver ────────────────────────────────────────────────────────
+  imu:
+    simulate:         true
+    sample_rate_hz:   1000
+    sched_priority:   60
+
+  # ── CAN bus driver ────────────────────────────────────────────────────
+  can:
+    interface:        "vcan0"  # SocketCAN interface name
+    simulate_fallback: true    # Fall back to simulator if iface not found
+    sim_rate_hz:      50
+
+  # ── Fusion engine ─────────────────────────────────────────────────────
+  fusion:
+    output_hz:        100
+    complementary_alpha: 0.98  # Gyro weight; (1-alpha) for accelerometer
+
+  # ── Parquet exporter ──────────────────────────────────────────────────
+  exporter:
+    output_dir:       "./telemetry_output"
+    batch_size:       1000     # Rows per Parquet row group
+    rotation_sec:     60       # Seconds before opening a new file
+    compression:      "snappy" # snappy | zstd | gzip | none
+
+  # ── Metrics ───────────────────────────────────────────────────────────
+  metrics:
+    log_interval_sec: 5
