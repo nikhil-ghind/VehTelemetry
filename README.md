@@ -6,33 +6,35 @@ A C++17 vehicle telemetry pipeline targeting ARM (Cortex-A72/A57) that fuses LiD
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    subgraph src["Sensor threads"]
+        lid["LidarDriver<br/>VLP-16 simulator, 10 Hz spin,<br/>30k points per revolution<br/>SCHED_FIFO priority 50"]
+        imu["ImuDriver<br/>MPU-9250 simulator, 1 kHz<br/>SCHED_FIFO priority 60"]
+        can["CanDriver<br/>SOCK_RAW SocketCAN on vcan0,<br/>decodes OBD-II PIDs 0x0D, 0x0C, 0x11<br/>from CAN id 0x7E8,<br/>falls back to a 50 Hz simulator"]
+    end
+
+    subgraph q["Lock-free SPSC queues — power-of-two capacity, cache-padded cursors"]
+        ql["LidarPoint x 65536"]
+        qi["ImuSample x 8192"]
+        qo["ObdData x 4096"]
+    end
+
+    fuse["FusionEngine, 100 Hz thread<br/>drains all IMU samples and integrates the gyro,<br/>blends accel pitch/roll with alpha 0.98,<br/>keeps the last OBD speed / rpm / throttle,<br/>pops up to 500 LiDAR points for forward density,<br/>dead-reckons position from the yaw quaternion"]
+    qf["FusedSample x 4096"]
+    exp["ParquetExporter<br/>Arrow tables, snappy,<br/>1000 rows per row group,<br/>rotates the file every 60 s"]
+    files[("telemetry_YYYYMMDD_HHMMSS_NNNN.parquet")]
+    met["Metrics thread<br/>fusion latency per tick,<br/>drop counter, 5 s log interval"]
+
+    lid --> ql --> fuse
+    imu --> qi --> fuse
+    can --> qo --> fuse
+    fuse -->|"push, or count a drop if full"| qf --> exp --> files
+    fuse --> met
+    exp --> met
 ```
-  ┌──────────────────────────────────────────────────────────────────┐
-  │  Sensor Threads (SCHED_FIFO real-time priority)                  │
-  │                                                                  │
-  │  ┌────────────────┐  ┌────────────────┐  ┌──────────────────┐   │
-  │  │  LidarDriver   │  │   ImuDriver    │  │   CanDriver      │   │
-  │  │ VLP-16 sim     │  │ MPU-9250 sim   │  │ SocketCAN/vcan0  │   │
-  │  │ 300K pts/s     │  │ 1 kHz          │  │ OBD-II decoder   │   │
-  │  └──────┬─────────┘  └──────┬─────────┘  └────────┬─────────┘   │
-  │         │ SpscQueue         │ SpscQueue            │ SpscQueue   │
-  │         │ <LidarPoint,65536>│ <ImuSample,8192>     │<ObdData,4K> │
-  └─────────┼───────────────────┼──────────────────────┼────────────┘
-            │                   │                      │
-  ┌─────────▼───────────────────▼──────────────────────▼────────────┐
-  │  FusionEngine (100 Hz)                                           │
-  │  · Complementary filter for IMU orientation (α=0.98 gyro)       │
-  │  · Dead-reckoning position from OBD speed + yaw heading         │
-  │  · LiDAR forward-sector density estimation                      │
-  └─────────────────────────┬────────────────────────────────────────┘
-                             │ SpscQueue<FusedSample, 4096>
-  ┌──────────────────────────▼───────────────────────────────────────┐
-  │  ParquetExporter                                                 │
-  │  · Apache Arrow C++ API, Snappy compression                      │
-  │  · Batches 1000 FusedSamples per row group                       │
-  │  · Rotates file every 60 s: telemetry_YYYYMMDD_HHMMSS_NNNN.parquet│
-  └──────────────────────────────────────────────────────────────────┘
-```
+
+<img src="docs/fusion.svg" alt="Animated pipeline: LiDAR, IMU and CAN samples flow into their queues, a 100 Hz fusion tick drains them and publishes one fused sample per tick to the Parquet exporter" width="940">
 
 ---
 
