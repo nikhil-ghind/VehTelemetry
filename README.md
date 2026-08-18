@@ -157,6 +157,29 @@ parquet_exporter: closed ./telemetry_output/telemetry_20260419_120100_0000.parqu
 
 ---
 
+## Tests / End-to-End Check
+
+No automated test suite is committed. To validate a build end-to-end:
+
+```bash
+# 1. Build (see Build Instructions above)
+./build/veh_telemetry &
+PIPE_PID=$!
+
+# 2. Let it run for ~75s so at least one Parquet file rotates
+sleep 75
+kill -TERM $PIPE_PID
+
+# 3. Verify Parquet output schema and row count
+python3 -c "import pyarrow.parquet as pq; \
+t=pq.read_table('telemetry_output/'); print(t.schema); print('rows:', t.num_rows)"
+
+# 4. Verify queue drop counter remains at 0 in the stderr [metrics] lines
+```
+
+For latency validation, scrape the `[metrics]` lines for `fusion_lat avg` and assert the p99
+stays under the sub-10ms per-frame target called out in the project description.
+
 ## Project Structure
 
 ```
